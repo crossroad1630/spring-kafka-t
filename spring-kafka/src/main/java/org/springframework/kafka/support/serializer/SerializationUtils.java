@@ -19,6 +19,8 @@ package org.springframework.kafka.support.serializer;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InvalidClassException;
+import java.io.ObjectInputFilter;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
 import java.io.ObjectStreamClass;
@@ -45,6 +47,10 @@ import org.springframework.util.ClassUtils;
  *
  */
 public final class SerializationUtils {
+
+	private static final ObjectInputFilter DESERIALIZATION_EXCEPTION_FILTER = ObjectInputFilter.Config.createFilter(
+			"maxdepth=16;maxrefs=128;maxbytes=1048576;java.base/*;java.util.*;org.springframework.kafka.**;"
+					+ "org.apache.kafka.**;!*");
 
 	/**
 	 * Header name for deserialization exceptions.
@@ -239,21 +245,53 @@ public final class SerializationUtils {
 
 				@Override
 				protected Class<?> resolveClass(ObjectStreamClass desc) throws IOException, ClassNotFoundException {
+					Class<?> resolved = super.resolveClass(desc);
+					checkDeserializationClass(resolved, this.first);
 					if (this.first) {
 						this.first = false;
-						Assert.state(desc.getName().equals(DeserializationException.class.getName()),
-								"Header does not contain a DeserializationException");
 					}
-					return super.resolveClass(desc);
+					return resolved;
 				}
 
 			};
+			ois.setObjectInputFilter(DESERIALIZATION_EXCEPTION_FILTER);
 			return (DeserializationException) ois.readObject();
 		}
 		catch (IOException | ClassNotFoundException | ClassCastException e) {
-			logger.error(e, "Failed to deserialize a deserialization exception");
+			if (logger != null) {
+				logger.error(e, "Failed to deserialize a deserialization exception");
+			}
 			return null;
 		}
+	}
+
+	private static void checkDeserializationClass(Class<?> resolved, boolean first)
+			throws InvalidClassException {
+
+		if (first && !DeserializationException.class.equals(resolved)) {
+			throw new InvalidClassException("Header does not contain a DeserializationException");
+		}
+		if (DeserializationException.class.equals(resolved) || Throwable.class.isAssignableFrom(resolved)
+				|| isSafeDeserializationType(resolved)) {
+			return;
+		}
+		throw new InvalidClassException("Unauthorized deserialization attempt", resolved.getName());
+	}
+
+	private static boolean isSafeDeserializationType(Class<?> resolved) {
+		if (resolved.isPrimitive()) {
+			return true;
+		}
+		if (resolved.isArray()) {
+			Class<?> componentType = resolved.getComponentType();
+			return componentType != null
+					&& (componentType.isPrimitive() || isSafeDeserializationType(componentType)
+							|| Throwable.class.isAssignableFrom(componentType));
+		}
+		return resolved.equals(String.class)
+				|| resolved.equals(StackTraceElement.class)
+				|| resolved.getName().startsWith("java.lang.")
+				|| resolved.getName().startsWith("java.util.");
 	}
 
 }
