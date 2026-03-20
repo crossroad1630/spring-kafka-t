@@ -204,8 +204,13 @@ public class ShareKafkaListenerContainerFactory<K, V>
 
 		JavaUtils.INSTANCE
 				.acceptIfNotNull(this.recordRecoverer, instance::setShareConsumerRecordRecoverer)
-				.acceptIfNotNull(endpoint.getGroupId(), properties::setGroupId)
-				.acceptIfNotNull(endpoint.getClientIdPrefix(), properties::setClientId);
+				.acceptIfNotNull(endpoint.getGroupId(), properties::setGroupId);
+
+		String clientIdPrefix = endpoint.getClientIdPrefix();
+		if (clientIdPrefix != null) {
+			properties.setClientId(clientIdPrefix);
+			instance.setClientId(clientIdPrefix);
+		}
 	}
 
 	/**
