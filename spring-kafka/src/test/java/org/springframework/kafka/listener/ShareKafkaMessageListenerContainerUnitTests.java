@@ -202,6 +202,22 @@ public class ShareKafkaMessageListenerContainerUnitTests {
 	}
 
 	@Test
+	void factoryShouldApplyClientIdPrefixToContainer() {
+		ShareKafkaListenerContainerFactory<String, String> factory =
+				new ShareKafkaListenerContainerFactory<>(shareConsumerFactory);
+
+		KafkaListenerEndpoint endpoint = mock(KafkaListenerEndpoint.class);
+		given(endpoint.getTopics()).willReturn(java.util.List.of("test-topic"));
+		given(endpoint.getClientIdPrefix()).willReturn("share-client");
+
+		ShareKafkaMessageListenerContainer<String, String> container =
+				factory.createListenerContainer(endpoint);
+
+		assertThat(container.getClientId()).isEqualTo("share-client");
+		assertThat(container.getContainerProperties().getClientId()).isEqualTo("share-client");
+	}
+
+	@Test
 	void factoryShouldApplyShareConsumerRecordRecovererToContainer() {
 		ShareConsumerRecordRecoverer customRecoverer = (record, ex) -> AcknowledgeType.RELEASE;
 		ShareKafkaListenerContainerFactory<String, String> factory =

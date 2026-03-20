@@ -127,7 +127,7 @@ public class ShareKafkaMessageListenerContainer<K, V>
 	 */
 	@Nullable
 	public String getClientId() {
-		return this.clientId;
+		return this.clientId != null ? this.clientId : getContainerProperties().getClientId();
 	}
 
 	/**
@@ -222,7 +222,8 @@ public class ShareKafkaMessageListenerContainer<K, V>
 	 * @return the client ID to use
 	 */
 	private String determineClientId(int index) {
-		String baseClientId = this.clientId != null ? this.clientId : getBeanName();
+		String configuredClientId = getClientId();
+		String baseClientId = configuredClientId != null ? configuredClientId : getBeanName();
 		if (this.concurrency > 1) {
 			return baseClientId + "-" + index;
 		}
