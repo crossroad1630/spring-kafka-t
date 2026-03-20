@@ -23,6 +23,8 @@ import java.io.Serializable;
 import java.util.List;
 import java.util.function.Supplier;
 
+import org.apache.kafka.common.errors.SerializationException;
+
 import org.apache.commons.logging.LogFactory;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.apache.kafka.common.header.internals.RecordHeader;
@@ -84,6 +86,23 @@ public class SerializationUtilsTests {
 				.isNull();
 	}
 
+	@Test
+	void nestedThrowableCauseIsPreserved() {
+		RecordHeaders headers = new RecordHeaders();
+		SerializationUtils.deserializationException(headers, new byte[] { 1 },
+				new SerializationException("wrapper", new ThirdPartyParseException("boom")), false);
+
+		DeserializationException exception = SerializationUtils.byteArrayToDeserializationException(null,
+				headers.lastHeader(KafkaUtils.VALUE_DESERIALIZER_EXCEPTION_HEADER));
+
+		assertThat(exception).isNotNull();
+		assertThat(exception.getCause()).isInstanceOf(SerializationException.class)
+				.hasMessage("wrapper")
+				.cause()
+				.isInstanceOf(ThirdPartyParseException.class)
+				.hasMessage("boom");
+	}
+
 	@SuppressWarnings("serial")
 	static final class MaliciousException extends RuntimeException {
 
@@ -96,6 +115,15 @@ public class SerializationUtilsTests {
 	}
 
 	record MaliciousPayload(String value) implements Serializable {
+	}
+
+	@SuppressWarnings("serial")
+	static final class ThirdPartyParseException extends IOException {
+
+		ThirdPartyParseException(String message) {
+			super(message);
+		}
+
 	}
 
 }
