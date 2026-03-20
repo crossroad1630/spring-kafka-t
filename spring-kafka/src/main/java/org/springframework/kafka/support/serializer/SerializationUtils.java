@@ -48,9 +48,27 @@ import org.springframework.util.ClassUtils;
  */
 public final class SerializationUtils {
 
-	private static final ObjectInputFilter DESERIALIZATION_EXCEPTION_FILTER = ObjectInputFilter.Config.createFilter(
-			"maxdepth=16;maxrefs=128;maxbytes=1048576;java.base/*;java.util.*;org.springframework.kafka.**;"
-					+ "org.apache.kafka.**;!*");
+	private static final long DESERIALIZATION_EXCEPTION_MAX_DEPTH = 16;
+
+	private static final long DESERIALIZATION_EXCEPTION_MAX_REFS = 128;
+
+	private static final long DESERIALIZATION_EXCEPTION_MAX_BYTES = 1_048_576;
+
+	private static final ObjectInputFilter DESERIALIZATION_EXCEPTION_FILTER = info -> {
+		if (info.depth() > DESERIALIZATION_EXCEPTION_MAX_DEPTH || info.references() > DESERIALIZATION_EXCEPTION_MAX_REFS
+				|| info.streamBytes() > DESERIALIZATION_EXCEPTION_MAX_BYTES) {
+			return ObjectInputFilter.Status.REJECTED;
+		}
+		Class<?> serialClass = info.serialClass();
+		if (serialClass == null) {
+			return ObjectInputFilter.Status.UNDECIDED;
+		}
+		if (DeserializationException.class.equals(serialClass) || Throwable.class.isAssignableFrom(serialClass)
+				|| isSafeDeserializationType(serialClass)) {
+			return ObjectInputFilter.Status.ALLOWED;
+		}
+		return ObjectInputFilter.Status.REJECTED;
+	};
 
 	/**
 	 * Header name for deserialization exceptions.
