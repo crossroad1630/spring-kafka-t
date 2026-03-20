@@ -16,6 +16,10 @@
 
 package org.springframework.kafka.support.serializer;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.ObjectOutputStream;
+import java.io.Serializable;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -30,6 +34,8 @@ import org.springframework.core.log.LogAccessor;
 import org.springframework.kafka.support.KafkaUtils;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willAnswer;
 import static org.mockito.BDDMockito.willReturn;
@@ -60,6 +66,36 @@ public class SerializationUtilsTests {
 				KafkaUtils.VALUE_DESERIALIZER_EXCEPTION_HEADER, logger)).isNull();
 		assertThat(captor.getValue().get())
 				.isEqualTo("Foreign deserialization exception header in (foo-1@0) ignored; possible attack?");
+	}
+
+	@Test
+	void maliciousNestedTypeIsRejected() throws IOException {
+		ByteArrayOutputStream stream = new ByteArrayOutputStream();
+		try (ObjectOutputStream oos = new ObjectOutputStream(stream)) {
+			oos.writeObject(new DeserializationException("failed", new byte[] { 1 }, false,
+					new MaliciousException("boom")));
+		}
+		LogAccessor logger = spy(new LogAccessor(LogFactory.getLog(getClass())));
+		willAnswer(invocation -> null).given(logger)
+				.error(any(Throwable.class), eq("Failed to deserialize a deserialization exception"));
+		assertThat(SerializationUtils.byteArrayToDeserializationException(logger,
+				new DeserializationExceptionHeader(KafkaUtils.VALUE_DESERIALIZER_EXCEPTION_HEADER,
+						stream.toByteArray())))
+				.isNull();
+	}
+
+	@SuppressWarnings("serial")
+	static final class MaliciousException extends RuntimeException {
+
+		private final MaliciousPayload payload = new MaliciousPayload("boom");
+
+		MaliciousException(String message) {
+			super(message);
+		}
+
+	}
+
+	record MaliciousPayload(String value) implements Serializable {
 	}
 
 }
